@@ -1,8 +1,6 @@
 import requests
-from bs4 import BeautifulSoup
 import os
 from datetime import datetime
-import re
 import json
 
 # 환경 변수에서 텔레그램 정보 가져오기
@@ -24,175 +22,136 @@ def send_telegram_message(message):
         print(f"텔레그램 전송 실패: {e}")
         return None
 
-def check_reservation():
-    """예약 페이지 확인 및 상세 정보 수집"""
-    url = "https://www.museum.go.kr/MUSEUM/contents/M0104010000.do?schM=child&act=form"
+def get_reservation_data(target_date="20260214"):
+    """
+    특정 날짜의 예약 정보를 API로 가져오기
+    target_date: YYYYMMDD 형식 (예: 20260214)
+    """
+    api_url = "https://www.museum.go.kr/ticket_reservation/Web/Book/GetBookPlaySequence.json"
+    
+    params = {
+        "shop_code": "102830101202",
+        "play_date": target_date,
+        "product_group_code": "0101"
+    }
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+        'Referer': 'https://www.museum.go.kr/MUSEUM/contents/M0104010000.do?schM=child&act=intro',
+        'X-Requested-With': 'XMLHttpRequest'
+    }
     
     try:
-        # 페이지 요청
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-        }
-        
-        session = requests.Session()
-        response = session.get(url, headers=headers, timeout=30)
+        response = requests.get(api_url, params=params, headers=headers, timeout=30)
         response.raise_for_status()
-        
-        # HTML 파싱
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # 현재 시간
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # 상태 메시지 초기화
-        status_message = f"🔍 <b>박물관 예약 체크</b>\n"
-        status_message += f"⏰ 체크 시간: {current_time}\n"
-        status_message += f"━━━━━━━━━━━━━━━━━\n\n"
-        
-        # 예약 가능 여부 체크를 위한 키워드
-        page_text = soup.get_text()
-        
-        # 2월 14일 키워드 확인
-        feb_14_keywords = ["2월 14일", "02월 14일", "2.14", "02.14", "14일"]
-        found_feb_14 = any(keyword in page_text for keyword in feb_14_keywords)
-        
-        # 10시 타임 키워드 확인
-        time_10_keywords = ["10:00", "10시", "10 : 00"]
-        found_time_10 = any(keyword in page_text for keyword in time_10_keywords)
-        
-        # 예약 관련 정보 추출 시도
-        reservation_info = extract_reservation_info(soup, page_text)
-        
-        # 예약 정보가 있으면 상세 정보 표시
-        if reservation_info:
-            status_message += "📊 <b>예약 현황</b>\n\n"
-            
-            for date_info in reservation_info:
-                status_message += f"📅 날짜: {date_info['date']}\n"
-                status_message += f"🕐 시간: {date_info['time']}\n"
-                status_message += f"👥 총 인원: {date_info['total']}\n"
-                status_message += f"✅ 예약 가능: {date_info['available']}\n"
-                
-                # 예약 가능 인원 계산
-                try:
-                    total = int(date_info['total'])
-                    available = int(date_info['available'])
-                    booked = total - available
-                    percentage = (booked / total * 100) if total > 0 else 0
-                    
-                    status_message += f"📈 예약률: {percentage:.1f}%\n"
-                except:
-                    pass
-                
-                status_message += f"\n"
-            
-            # 2월 14일 10시가 발견되면 특별 알림
-            if found_feb_14 and found_time_10:
-                status_message += "🎯 <b>2월 14일 10시 타임 발견!</b>\n\n"
-                status_message += f"🔗 <a href='{url}'>지금 바로 예약하러 가기</a>\n"
-                status_message += "⚠️ <b>서둘러 확인하세요!</b>"
-        else:
-            # 예약 정보를 찾을 수 없는 경우
-            status_message += "ℹ️ <b>현재 상태</b>\n\n"
-            
-            if found_feb_14:
-                status_message += "✅ 2월 14일 정보 발견\n"
-            else:
-                status_message += "❌ 2월 14일 정보 없음\n"
-            
-            if found_time_10:
-                status_message += "✅ 10시 타임 정보 발견\n"
-            else:
-                status_message += "❌ 10시 타임 정보 없음\n"
-            
-            status_message += "\n"
-            
-            # 페이지에서 숫자 패턴 찾기 (예약 가능 인원 추정)
-            numbers = re.findall(r'\d+', page_text)
-            if numbers:
-                status_message += f"📝 페이지에서 발견된 숫자들: {', '.join(numbers[:10])}\n\n"
-            
-            status_message += "💡 예약 상세 정보는 아직 로드되지 않았거나\n"
-            status_message += "   페이지 구조가 변경되었을 수 있습니다.\n\n"
-            status_message += f"🔗 <a href='{url}'>페이지 직접 확인하기</a>"
-        
-        # 메시지 전송
-        print(status_message)
-        send_telegram_message(status_message)
-        
-        return True
-        
+        return response.json()
     except Exception as e:
-        error_message = f"⚠️ <b>오류 발생</b>\n"
-        error_message += f"⏰ 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        error_message += f"❌ 내용: {str(e)}"
+        print(f"API 요청 실패: {e}")
+        return None
+
+def check_reservation():
+    """2월 14일 예약 정보 확인"""
+    
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 2월 14일 예약 정보 가져오기
+    data = get_reservation_data("20260214")
+    
+    if not data:
+        # API 실패 시 메시지
+        error_message = f"⚠️ <b>API 호출 실패</b>\n"
+        error_message += f"⏰ 시간: {current_time}\n\n"
+        error_message += "예약 정보를 가져올 수 없습니다.\n"
+        error_message += "페이지가 변경되었거나 네트워크 오류일 수 있습니다."
         
+        print(error_message)
         send_telegram_message(error_message)
-        print(f"오류: {e}")
         return False
-
-def extract_reservation_info(soup, page_text):
-    """페이지에서 예약 정보 추출"""
-    reservation_data = []
+    
+    # 메시지 생성
+    status_message = f"🔍 <b>박물관 예약 체크</b>\n"
+    status_message += f"⏰ 체크 시간: {current_time}\n"
+    status_message += f"📅 조회 날짜: 2026년 2월 14일\n"
+    status_message += f"━━━━━━━━━━━━━━━━━\n\n"
     
     try:
-        # 방법 1: 테이블이나 리스트에서 추출
-        tables = soup.find_all('table')
-        for table in tables:
-            rows = table.find_all('tr')
-            for row in rows:
-                cells = row.find_all(['td', 'th'])
-                if len(cells) >= 3:
-                    # 날짜, 시간, 인원 정보가 있는지 확인
-                    text_content = [cell.get_text(strip=True) for cell in cells]
-                    
-                    # 패턴 매칭으로 예약 정보 추출
-                    for i, text in enumerate(text_content):
-                        if '월' in text and '일' in text:
-                            # 예약 정보로 보이는 행 발견
-                            date_info = {
-                                'date': text,
-                                'time': text_content[i+1] if i+1 < len(text_content) else 'N/A',
-                                'total': extract_number(text_content, i+2),
-                                'available': extract_number(text_content, i+3)
-                            }
-                            reservation_data.append(date_info)
+        # API 응답 구조에 따라 데이터 파싱
+        # 일반적인 예약 API 응답 구조를 가정
         
-        # 방법 2: div나 span에서 추출
-        if not reservation_data:
-            # 예약 관련 클래스나 ID를 가진 요소 찾기
-            reservation_sections = soup.find_all(['div', 'section'], class_=re.compile(r'reserv|book|schedule', re.I))
-            for section in reservation_sections:
-                # 날짜 패턴 찾기
-                dates = re.findall(r'(\d{1,2}월\s*\d{1,2}일)', section.get_text())
-                times = re.findall(r'(\d{1,2}:\d{2})', section.get_text())
+        if isinstance(data, dict):
+            # 예약 가능한 시간대 정보가 있는지 확인
+            if 'list' in data or 'data' in data or 'result' in data:
+                time_slots = data.get('list') or data.get('data') or data.get('result') or []
                 
-                if dates and times:
-                    for date, time in zip(dates, times):
-                        date_info = {
-                            'date': date,
-                            'time': time,
-                            'total': 'N/A',
-                            'available': 'N/A'
-                        }
-                        reservation_data.append(date_info)
-        
-    except Exception as e:
-        print(f"예약 정보 추출 중 오류: {e}")
+                if time_slots:
+                    status_message += f"📊 <b>예약 현황</b>\n\n"
+                    
+                    found_10am = False
+                    total_available = 0
+                    
+                    for slot in time_slots:
+                        # 시간대 정보 추출
+                        play_time = slot.get('play_time', slot.get('time', 'N/A'))
+                        total_cnt = slot.get('seat_cnt', slot.get('total', slot.get('total_cnt', 0)))
+                        remain_cnt = slot.get('remain_cnt', slot.get('available', slot.get('remain', 0)))
+                        
+                        # 예약 가능 여부
+                        is_available = slot.get('book_status', slot.get('status', '')) != 'N'
+                        
+                        # 10시 타임 확인
+                        if '10:00' in str(play_time) or '10시' in str(play_time):
+                            found_10am = True
+                        
+                        # 예약 가능한 경우만 카운트
+                        if is_available and remain_cnt > 0:
+                            total_available += remain_cnt
+                        
+                        # 시간대별 정보 표시
+                        status_icon = "✅" if is_available and remain_cnt > 0 else "❌"
+                        status_message += f"{status_icon} <b>{play_time}</b>\n"
+                        status_message += f"   👥 총 인원: {total_cnt}명\n"
+                        status_message += f"   🎫 예약 가능: {remain_cnt}명\n"
+                        
+                        # 예약률 계산
+                        if total_cnt > 0:
+                            booked = total_cnt - remain_cnt
+                            percentage = (booked / total_cnt * 100)
+                            status_message += f"   📈 예약률: {percentage:.1f}%\n"
+                        
+                        status_message += "\n"
+                    
+                    # 10시 타임 발견 시 특별 알림
+                    if found_10am and total_available > 0:
+                        status_message += "🎯 <b>2월 14일 10시 타임 예약 가능!</b>\n\n"
+                        status_message += f"🔗 <a href='https://www.museum.go.kr/MUSEUM/contents/M0104010000.do?schM=child&act=intro'>지금 바로 예약하러 가기</a>\n"
+                        status_message += "⚠️ <b>서둘러 확인하세요!</b>"
+                    elif found_10am:
+                        status_message += "ℹ️ 10시 타임이 있지만 현재 예약 불가 상태입니다."
+                    else:
+                        status_message += "ℹ️ 아직 10시 타임 정보가 표시되지 않았습니다."
+                else:
+                    status_message += "ℹ️ 예약 가능한 시간대가 없습니다.\n"
+                    status_message += "아직 예약이 오픈되지 않았을 수 있습니다."
+            else:
+                # API 응답은 있지만 예상과 다른 구조
+                status_message += "📋 <b>API 응답 내용:</b>\n"
+                status_message += f"<code>{json.dumps(data, ensure_ascii=False, indent=2)[:500]}</code>\n\n"
+                status_message += "예약 정보 구조를 확인 중입니다."
+        else:
+            status_message += "⚠️ 예상치 못한 API 응답 형식입니다."
     
-    return reservation_data
-
-def extract_number(text_list, index):
-    """텍스트 리스트에서 숫자 추출"""
-    try:
-        if index < len(text_list):
-            numbers = re.findall(r'\d+', text_list[index])
-            return numbers[0] if numbers else 'N/A'
-    except:
-        pass
-    return 'N/A'
+    except Exception as e:
+        status_message += f"❌ 데이터 파싱 오류\n"
+        status_message += f"상세: {str(e)}\n\n"
+        status_message += f"원본 데이터:\n<code>{str(data)[:300]}</code>"
+    
+    # 메시지 전송
+    print(status_message)
+    send_telegram_message(status_message)
+    
+    return True
 
 if __name__ == "__main__":
     print("박물관 예약 모니터링 시작...")
