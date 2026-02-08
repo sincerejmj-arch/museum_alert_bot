@@ -77,70 +77,82 @@ def check_reservation():
     status_message += f"━━━━━━━━━━━━━━━━━\n\n"
     
     try:
-        # API 응답 구조에 따라 데이터 파싱
-        # 일반적인 예약 API 응답 구조를 가정
+        # API 응답 구조: {'data': {'bookPlaySequenceList': [...]}}
         
-        if isinstance(data, dict):
-            # 예약 가능한 시간대 정보가 있는지 확인
-            if 'list' in data or 'data' in data or 'result' in data:
-                time_slots = data.get('list') or data.get('data') or data.get('result') or []
-                
-                if time_slots:
-                    status_message += f"📊 <b>예약 현황</b>\n\n"
-                    
-                    found_10am = False
-                    total_available = 0
-                    
-                    for slot in time_slots:
-                        # 시간대 정보 추출
-                        play_time = slot.get('play_time', slot.get('time', 'N/A'))
-                        total_cnt = slot.get('seat_cnt', slot.get('total', slot.get('total_cnt', 0)))
-                        remain_cnt = slot.get('remain_cnt', slot.get('available', slot.get('remain', 0)))
-                        
-                        # 예약 가능 여부
-                        is_available = slot.get('book_status', slot.get('status', '')) != 'N'
-                        
-                        # 10시 타임 확인
-                        if '10:00' in str(play_time) or '10시' in str(play_time):
-                            found_10am = True
-                        
-                        # 예약 가능한 경우만 카운트
-                        if is_available and remain_cnt > 0:
-                            total_available += remain_cnt
-                        
-                        # 시간대별 정보 표시
-                        status_icon = "✅" if is_available and remain_cnt > 0 else "❌"
-                        status_message += f"{status_icon} <b>{play_time}</b>\n"
-                        status_message += f"   👥 총 인원: {total_cnt}명\n"
-                        status_message += f"   🎫 예약 가능: {remain_cnt}명\n"
-                        
-                        # 예약률 계산
-                        if total_cnt > 0:
-                            booked = total_cnt - remain_cnt
-                            percentage = (booked / total_cnt * 100)
-                            status_message += f"   📈 예약률: {percentage:.1f}%\n"
-                        
-                        status_message += "\n"
-                    
-                    # 10시 타임 발견 시 특별 알림
-                    if found_10am and total_available > 0:
-                        status_message += "🎯 <b>2월 14일 10시 타임 예약 가능!</b>\n\n"
-                        status_message += f"🔗 <a href='https://www.museum.go.kr/MUSEUM/contents/M0104010000.do?schM=child&act=intro'>지금 바로 예약하러 가기</a>\n"
-                        status_message += "⚠️ <b>서둘러 확인하세요!</b>"
-                    elif found_10am:
-                        status_message += "ℹ️ 10시 타임이 있지만 현재 예약 불가 상태입니다."
-                    else:
-                        status_message += "ℹ️ 아직 10시 타임 정보가 표시되지 않았습니다."
-                else:
-                    status_message += "ℹ️ 예약 가능한 시간대가 없습니다.\n"
-                    status_message += "아직 예약이 오픈되지 않았을 수 있습니다."
+        if isinstance(data, dict) and 'data' in data:
+            book_data = data.get('data', {})
+            
+            # bookPlaySequenceList에서 시간대 정보 가져오기
+            if isinstance(book_data, dict):
+                time_slots = book_data.get('bookPlaySequenceList', [])
             else:
-                # API 응답은 있지만 예상과 다른 구조
-                status_message += "📋 <b>API 응답 내용:</b>\n"
-                status_message += f"<code>{json.dumps(data, ensure_ascii=False, indent=2)[:500]}</code>\n\n"
-                status_message += "예약 정보 구조를 확인 중입니다."
+                time_slots = []
+            
+            if time_slots:
+                status_message += f"📊 <b>예약 현황</b>\n\n"
+                
+                found_10am = False
+                found_10am_available = False
+                
+                for slot in time_slots:
+                    # 시간 정보 추출 (start_time: '1000' -> '10:00')
+                    start_time = slot.get('start_time', '')
+                    if len(start_time) == 4:
+                        play_time = f"{start_time[:2]}:{start_time[2:]}"
+                    else:
+                        play_time = start_time
+                    
+                    # 예약 가능 여부 (book_yn: '1' = 예약 가능, '0' = 불가)
+                    book_yn = slot.get('book_yn', '0')
+                    is_available = book_yn == '1'
+                    
+                    # 남은 좌석 수
+                    window_remain = slot.get('window_remain_count', 0)
+                    book_remain = slot.get('book_remain_count', 0)
+                    
+                    # 10시 타임 확인
+                    if play_time.startswith('10:'):
+                        found_10am = True
+                        if is_available and (window_remain > 0 or book_remain > 0):
+                            found_10am_available = True
+                    
+                    # 시간대별 정보 표시
+                    if is_available and window_remain > 0:
+                        status_icon = "✅"
+                    else:
+                        status_icon = "❌"
+                    
+                    status_message += f"{status_icon} <b>{play_time}</b>\n"
+                    status_message += f"   🎫 예약 가능: {window_remain}명\n"
+                    
+                    # 예약 가능 상태 표시
+                    if is_available:
+                        if window_remain > 0:
+                            status_message += f"   ✨ 상태: 예약 가능\n"
+                        else:
+                            status_message += f"   ⏳ 상태: 매진\n"
+                    else:
+                        status_message += f"   🚫 상태: 예약 불가\n"
+                    
+                    status_message += "\n"
+                
+                # 10시 타임 발견 시 특별 알림
+                if found_10am_available:
+                    status_message += "🎯 <b>2월 14일 10시 타임 예약 가능!</b>\n\n"
+                    status_message += f"🔗 <a href='https://www.museum.go.kr/MUSEUM/contents/M0104010000.do?schM=child&act=intro'>지금 바로 예약하러 가기</a>\n"
+                    status_message += "⚠️ <b>서둘러 확인하세요!</b>"
+                elif found_10am:
+                    status_message += "ℹ️ 10시 타임이 있지만 현재 매진이거나 예약 불가 상태입니다."
+                else:
+                    status_message += "ℹ️ 아직 10시 타임 정보가 표시되지 않았습니다."
+            else:
+                status_message += "ℹ️ 예약 가능한 시간대가 없습니다.\n"
+                status_message += "아직 예약이 오픈되지 않았을 수 있습니다."
         else:
-            status_message += "⚠️ 예상치 못한 API 응답 형식입니다."
+            # API 응답은 있지만 예상과 다른 구조
+            status_message += "📋 <b>API 응답 내용:</b>\n"
+            status_message += f"<code>{json.dumps(data, ensure_ascii=False, indent=2)[:500]}</code>\n\n"
+            status_message += "예약 정보 구조를 확인 중입니다."
     
     except Exception as e:
         status_message += f"❌ 데이터 파싱 오류\n"
