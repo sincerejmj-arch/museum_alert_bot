@@ -52,12 +52,12 @@ def get_reservation_data(target_date="20260214"):
         return None
 
 def check_reservation():
-    """2월 13일 예약 정보 확인"""
+    """2월 14일 예약 정보 확인"""
     
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # 2월 13일 예약 정보 가져오기
-    data = get_reservation_data("20260213")
+    # 2월 14일 예약 정보 가져오기
+    data = get_reservation_data("20260214")
     
     if not data:
         # API 실패 시 메시지
@@ -73,7 +73,7 @@ def check_reservation():
     # 메시지 생성
     status_message = f"🔍 <b>박물관 예약 체크</b>\n"
     status_message += f"⏰ 체크 시간: {current_time}\n"
-    status_message += f"📅 조회 날짜: 2026년 2월 13일\n"
+    status_message += f"📅 조회 날짜: 2026년 2월 14일\n"
     status_message += f"━━━━━━━━━━━━━━━━━\n\n"
     
     try:
