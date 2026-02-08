@@ -52,12 +52,12 @@ def get_reservation_data(target_date="20260214"):
         return None
 
 def check_reservation():
-    """2월 14일 예약 정보 확인"""
+    """2월 13일 예약 정보 확인"""
     
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # 2월 14일 예약 정보 가져오기
-    data = get_reservation_data("20260214")
+    # 2월 13일 예약 정보 가져오기
+    data = get_reservation_data("20260213")
     
     if not data:
         # API 실패 시 메시지
@@ -73,7 +73,7 @@ def check_reservation():
     # 메시지 생성
     status_message = f"🔍 <b>박물관 예약 체크</b>\n"
     status_message += f"⏰ 체크 시간: {current_time}\n"
-    status_message += f"📅 조회 날짜: 2026년 2월 14일\n"
+    status_message += f"📅 조회 날짜: 2026년 2월 13일\n"
     status_message += f"━━━━━━━━━━━━━━━━━\n\n"
     
     try:
@@ -97,48 +97,53 @@ def check_reservation():
                 for slot in time_slots:
                     # 시간 정보 추출 (start_time: '1000' -> '10:00')
                     start_time = slot.get('start_time', '')
+                    end_time = slot.get('end_time', '')
+                    
                     if len(start_time) == 4:
-                        play_time = f"{start_time[:2]}:{start_time[2:]}"
+                        start_formatted = f"{start_time[:2]}:{start_time[2:]}"
                     else:
-                        play_time = start_time
+                        start_formatted = start_time
+                    
+                    if len(end_time) == 4:
+                        end_formatted = f"{end_time[:2]}:{end_time[2:]}"
+                    else:
+                        end_formatted = end_time
+                    
+                    play_time = f"{start_formatted} ~ {end_formatted}"
                     
                     # 예약 가능 여부 (book_yn: '1' = 예약 가능, '0' = 불가)
                     book_yn = slot.get('book_yn', '0')
-                    is_available = book_yn == '1'
+                    is_bookable = book_yn == '1'
                     
-                    # 남은 좌석 수
-                    window_remain = slot.get('window_remain_count', 0)
+                    # 실제 온라인 예약 가능 인원 (book_remain_count 사용!)
                     book_remain = slot.get('book_remain_count', 0)
                     
+                    # 참고용: window_remain_count는 현장 예약용일 수 있음
+                    window_remain = slot.get('window_remain_count', 0)
+                    
                     # 10시 타임 확인
-                    if play_time.startswith('10:'):
+                    if start_formatted.startswith('10:'):
                         found_10am = True
-                        if is_available and (window_remain > 0 or book_remain > 0):
+                        if is_bookable and book_remain > 0:
                             found_10am_available = True
                     
                     # 시간대별 정보 표시
-                    if is_available and window_remain > 0:
+                    if book_remain > 0:
                         status_icon = "✅"
+                        status_text = "예약 가능"
                     else:
                         status_icon = "❌"
+                        status_text = "매진"
                     
                     status_message += f"{status_icon} <b>{play_time}</b>\n"
-                    status_message += f"   🎫 예약 가능: {window_remain}명\n"
-                    
-                    # 예약 가능 상태 표시
-                    if is_available:
-                        if window_remain > 0:
-                            status_message += f"   ✨ 상태: 예약 가능\n"
-                        else:
-                            status_message += f"   ⏳ 상태: 매진\n"
-                    else:
-                        status_message += f"   🚫 상태: 예약 불가\n"
+                    status_message += f"   🎫 온라인 예약: {book_remain}명\n"
+                    status_message += f"   💡 상태: {status_text}\n"
                     
                     status_message += "\n"
                 
                 # 10시 타임 발견 시 특별 알림
                 if found_10am_available:
-                    status_message += "🎯 <b>2월 14일 10시 타임 예약 가능!</b>\n\n"
+                    status_message += "🎯 <b>2월 13일 10시 타임 예약 가능!</b>\n\n"
                     status_message += f"🔗 <a href='https://www.museum.go.kr/MUSEUM/contents/M0104010000.do?schM=child&act=intro'>지금 바로 예약하러 가기</a>\n"
                     status_message += "⚠️ <b>서둘러 확인하세요!</b>"
                 elif found_10am:
